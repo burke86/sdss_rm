@@ -104,7 +104,12 @@ A fit takes about 1–4 minutes and 0.1–1 GB of memory on a laptop CPU.
 - **Synthetic bands have the spectroscopic cadence.** That is about 90 epochs: 32 in 2014, then roughly 4–13 a year through 2020.
   Real broad-band photometry is usually denser, but it has no simultaneous Hβ to build a band from.
 - **The test lines are strong.** In survey photometry the in-band line/continuum ratio is typically 0.05–0.1,
-  below the weakest case here.
+  below the weakest case here. The histograms show this ratio for about 23,000 variable Stripe 82 quasars, in
+  each line's strongest SDSS band. The ratios come from DR16Q broad-line equivalent widths and the SDSS filter
+  curves. The red lines mark the ratios tested here, and the blue line is a 0.5 selection cut. Only C IV has
+  many quasars above 0.5; Hβ has 8 and Mg II none.
+
+  ![In-band line/continuum flux ratios of Stripe 82 quasars](figures/line_fraction_hist.png)
 - **The slow component can absorb real echo.** It can absorb part of a slow echo when the line channel is pure
   Hβ, so compare `spec` fits with `--no-slow`.
 
