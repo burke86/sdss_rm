@@ -38,14 +38,19 @@ Use `--all` for every object and `--lines` for other broad lines.
 
 ## Running
 
-1. **Synthetic photometric bands.** Each one is the continuum plus a × Hβ, with `a` the Hβ/continuum flux ratio:
+1. **Synthetic photometric bands.** Each SDSS-RM spectrum gives a continuum point (the `sdss_spec` rows of
+   `cont_lc.txt`) and an Hβ flux at the same epoch. At each of these epochs (about 90 per object) the band is
+   1 + (δC + a δHβ)/(1 + a). Here δ = flux/median − 1, and `a` is the Hβ/continuum flux ratio. Nothing is
+   interpolated.
 
    ```bash
    python generate_synthetic_hbeta_prm.py --amplitudes 1.0 0.75 0.5 0.25
    ```
 
    This writes `synthetic_hbeta_prm/rmXXX/prm_hb_a<amp>_lc.txt`. It deletes and rewrites the files it created
-   there, so list every amplitude you want in one call.
+   there, so list every amplitude you want in one call. For these cases the fit drops the `sdss_spec` points
+   from the continuum channel, so that channel has photometric epochs only. The two channels then share no
+   measurements or noise.
 
 2. **Job list:** quasars with an SDSS-RM Hβ lag of grade ≥ 4, one line per object and case:
 
@@ -96,8 +101,8 @@ A fit takes about 1–4 minutes and 0.1–1 GB of memory on a laptop CPU.
 
 ## Caveats
 
-- **Synthetic bands are optimistic.** Each one reuses the continuum's epochs and noise, and linearly
-  interpolates Hβ between epochs up to 30 days apart.
+- **Synthetic bands have the spectroscopic cadence.** That is about 90 epochs: 32 in 2014, then roughly 4–13 a year through 2020.
+  Real broad-band photometry is usually denser, but it has no simultaneous Hβ to build a band from.
 - **The test lines are strong.** In survey photometry the in-band line/continuum ratio is typically 0.05–0.1,
   below the weakest case here.
 - **The slow component can absorb real echo.** It can absorb part of a slow echo when the line channel is pure

@@ -15,7 +15,10 @@ RELFLUX_TO_MAG_SCALE = 2.5 / np.log(10.0)
 MIN_GROUP = 3
 
 
-def load_ascii_light_curve(path, continuum=False):
+SPEC_STREAM = "sdss_spec"  # continuum measured from the SDSS-RM spectra (same epochs as the line light curves)
+
+
+def load_ascii_light_curve(path, continuum=False, exclude_stream=None):
     if continuum:
         data = np.genfromtxt(path, comments="#", dtype=None, encoding="utf-8")
         t = np.asarray(data["f0"], dtype=float)
@@ -27,6 +30,8 @@ def load_ascii_light_curve(path, continuum=False):
         t, flux, error = data.T
         stream = None
     good = np.isfinite(t) & np.isfinite(flux) & np.isfinite(error) & (error > 0.0)
+    if exclude_stream is not None and stream is not None:
+        good &= ~np.char.startswith(stream, exclude_stream)
     t, flux, error = t[good], flux[good], error[good]
     if stream is not None:
         stream = stream[good]
@@ -63,8 +68,11 @@ def load_ascii_light_curve(path, continuum=False):
 
 def load_target(data_dir, rmid, line, synthetic_prm_amplitude=None):
     obj_dir = data_dir / f"rm{rmid:03d}"
+    # A synthetic band is built from the spectroscopic continuum points, so the continuum channel drops them:
+    # the two channels then never share a measurement or its noise.
     tc, yc, ec, n_cont_rejected = load_ascii_light_curve(
-        obj_dir / "cont_lc.txt", continuum=True
+        obj_dir / "cont_lc.txt", continuum=True,
+        exclude_stream=None if synthetic_prm_amplitude is None else SPEC_STREAM,
     )
     if synthetic_prm_amplitude is None:
         line_path = obj_dir / LINE_FILES[line]
