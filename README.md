@@ -38,19 +38,22 @@ Use `--all` for every object and `--lines` for other broad lines.
 
 ## Running
 
-1. **Synthetic photometric bands.** Each SDSS-RM spectrum gives a continuum point (the `sdss_spec` rows of
-   `cont_lc.txt`) and an Hβ flux at the same epoch. At each of these epochs (about 90 per object) the band is
-   1 + (δC + a δHβ)/(1 + a). Here δ = flux/median − 1, and `a` is the Hβ/continuum flux ratio. Nothing is
-   interpolated.
+1. **Synthetic photometric bands.** Each band point pairs an SDSS-RM Hβ flux with a photometric continuum
+   point (Bok, CFHT, PS1 or ZTF) taken within 1 day of that spectrum. Its value is 1 + (δC + a δHβ)/(1 + a).
+   Here δ = flux/median − 1, and `a` is the Hβ/continuum flux ratio. Nothing is interpolated.
 
    ```bash
    python generate_synthetic_hbeta_prm.py --amplitudes 1.0 0.75 0.5 0.25
    ```
 
    This writes `synthetic_hbeta_prm/rmXXX/prm_hb_a<amp>_lc.txt`. It deletes and rewrites the files it created
-   there, so list every amplitude you want in one call. For these cases the fit drops the `sdss_spec` points
-   from the continuum channel, so that channel has photometric epochs only. The two channels then share no
-   measurements or noise.
+   there, so list every amplitude you want in one call.
+   - The continuum part of the band comes from imaging, as in a real broad-band survey.
+   - For these cases the continuum channel leaves out the photometric points used in the bands and the
+     spectroscopic continuum (`sdss_spec`), so the two channels share no measurements or noise.
+   - Don't build the band from the spectroscopic continuum. Season to season it differs from the photometric
+     continuum by a few percent, and rm177 then came out at about 600 days, against 17 days with the
+     photometric continuum (SDSS-RM: 22 days).
 
 2. **Job list:** quasars with an SDSS-RM Hβ lag of grade ≥ 4, one line per object and case:
 
@@ -64,7 +67,7 @@ Use `--all` for every object and `--lines` for other broad lines.
    sh run_lag_profiles.sh jobs.txt runs/run1 3
    ```
 
-   A single fit is `python rm_lag_profile.py <rmid> <case> <out_dir> [--no-slow] [--order K]`.
+   A single fit is `python rm_lag_profile.py <rmid> <case> <out_dir> [--order K]`.
 
 4. **Recovery summary and plot:**
 
@@ -84,11 +87,14 @@ The model has these parts:
   K = 3 by default). Each channel is `c x(t) + r (ψ * x)(t)`. The Hβ channel of `spec` has no continuum term.
 - **Noise and means:** one jitter per (channel, facility) group, with the facility (telescope + filter) taken
   from the continuum file. There is one mean per channel and one linear trend.
-- **Slow component (on by default; `--no-slow` to turn off):** a Matérn-3/2 process seen only by channel 1, with
-  a timescale of about a season or longer. It absorbs slow structure in the line channel that the continuum
-  doesn't drive. Without it, the broad-line term can absorb that structure and return confident, very long lags.
-- **Lag posterior:** a profile over 24 rest-frame lags (2–900 days, log-normal prior centered at 100 days). At
-  each lag the other parameters are maximized, and a Laplace correction is applied.
+- **Known continuum fraction:** a synthetic band's continuum fraction is 1/(1 + a), which in practice comes from
+  the spectrum (line equivalent width and filter curve). The band's prompt-continuum amplitude gets a log-normal
+  prior centered there, 10% wide (`CONT_FRAC_PRIOR_WIDTH`).
+  - Without this prior, a short echo is nearly indistinguishable from the prompt continuum. The broad-line term
+    then fits slow Hβ variations instead, at lags near the baseline. rm303 came out at about 950 days against
+    24.5.
+- **Lag posterior:** the profile likelihood over 24 rest-frame lags (2–900 days), times a log-normal lag prior
+  centered at 100 days. At each lag the other parameters are maximized.
 
 Each fit writes a JSON file to `<out_dir>/out/`. It contains:
 - the lag grid, the posterior and the prior-divided likelihood;
@@ -97,12 +103,12 @@ Each fit writes a JSON file to `<out_dir>/out/`. It contains:
 - the SDSS-RM reference lag;
 - the best-fit parameters at each lag.
 
-A fit takes about 1–4 minutes and 0.1–1 GB of memory on a laptop CPU.
+A fit takes about 30–60 seconds and 0.1–1 GB of memory on a laptop CPU.
 
 ## Caveats
 
-- **Synthetic bands have the spectroscopic cadence.** That is about 90 epochs: 32 in 2014, then roughly 4–13 a year through 2020.
-  Real broad-band photometry is usually denser, but it has no simultaneous Hβ to build a band from.
+- **Synthetic bands are sparse.** Only spectra with photometry within a day give a band point: about 40 per
+  object (20–45), from 2014 to 2020. A real broad-band survey samples the line at every photometric epoch.
 - **The test lines are strong.** In survey photometry the in-band line/continuum ratio is typically 0.05–0.1,
   below the weakest case here. The histograms show this ratio for about 23,000 variable Stripe 82 quasars, in
   each line's strongest SDSS band. The ratios come from DR16Q broad-line equivalent widths and the SDSS filter
@@ -110,8 +116,6 @@ A fit takes about 1–4 minutes and 0.1–1 GB of memory on a laptop CPU.
   many quasars above 0.5; Hβ has 8 and Mg II none.
 
   ![In-band line/continuum flux ratios of Stripe 82 quasars](figures/line_fraction_hist.png)
-- **The slow component can absorb real echo.** It can absorb part of a slow echo when the line channel is pure
-  Hβ, so compare `spec` fits with `--no-slow`.
 
 ## References
 

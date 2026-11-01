@@ -18,7 +18,7 @@ MIN_GROUP = 3
 SPEC_STREAM = "sdss_spec"  # continuum measured from the SDSS-RM spectra (same epochs as the line light curves)
 
 
-def load_ascii_light_curve(path, continuum=False, exclude_stream=None):
+def load_ascii_light_curve(path, continuum=False, exclude_stream=None, exclude_times=None):
     if continuum:
         data = np.genfromtxt(path, comments="#", dtype=None, encoding="utf-8")
         t = np.asarray(data["f0"], dtype=float)
@@ -32,6 +32,8 @@ def load_ascii_light_curve(path, continuum=False, exclude_stream=None):
     good = np.isfinite(t) & np.isfinite(flux) & np.isfinite(error) & (error > 0.0)
     if exclude_stream is not None and stream is not None:
         good &= ~np.char.startswith(stream, exclude_stream)
+    if exclude_times is not None:
+        good &= np.min(np.abs(t[:, None] - np.asarray(exclude_times)[None, :]), axis=1) > 1e-4
     t, flux, error = t[good], flux[good], error[good]
     if stream is not None:
         stream = stream[good]
@@ -68,19 +70,20 @@ def load_ascii_light_curve(path, continuum=False, exclude_stream=None):
 
 def load_target(data_dir, rmid, line, synthetic_prm_amplitude=None):
     obj_dir = data_dir / f"rm{rmid:03d}"
-    # A synthetic band is built from the spectroscopic continuum points, so the continuum channel drops them:
-    # the two channels then never share a measurement or its noise.
-    tc, yc, ec, n_cont_rejected = load_ascii_light_curve(
-        obj_dir / "cont_lc.txt", continuum=True,
-        exclude_stream=None if synthetic_prm_amplitude is None else SPEC_STREAM,
-    )
     if synthetic_prm_amplitude is None:
         line_path = obj_dir / LINE_FILES[line]
+        tc, yc, ec, n_cont_rejected = load_ascii_light_curve(obj_dir / "cont_lc.txt", continuum=True)
     else:
         if line != "hb":
             raise ValueError("Synthetic PRM validation currently supports Hbeta only")
         tag = f"{synthetic_prm_amplitude:.3f}".rstrip("0").rstrip(".").replace(".", "p")
         line_path = data_dir / "synthetic_hbeta_prm" / obj_dir.name / f"prm_hb_a{tag}_lc.txt"
+        # The band contains photometric continuum points; the continuum channel drops them and the spectroscopic
+        # continuum, so the two channels never share a measurement or its noise.
+        tc, yc, ec, n_cont_rejected = load_ascii_light_curve(
+            obj_dir / "cont_lc.txt", continuum=True, exclude_stream=SPEC_STREAM,
+            exclude_times=np.loadtxt(line_path, usecols=0),
+        )
     tl, yl, el, n_line_rejected = load_ascii_light_curve(line_path)
     t0 = min(np.min(tc), np.min(tl))
     t = np.concatenate((tc - t0, tl - t0))

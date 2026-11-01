@@ -3,7 +3,7 @@
 #
 # usage: sh run_lag_profiles.sh <jobs.txt> <out_dir> [n_parallel=3] [extra flags for rm_lag_profile.py ...]
 # e.g.   sh run_lag_profiles.sh jobs.txt lag_runs/run1 3
-#        sh run_lag_profiles.sh jobs.txt lag_runs/run1_noslow 3 --no-slow
+#        sh run_lag_profiles.sh jobs.txt lag_runs/run1_K1 3 --order 1
 set -e
 JOBS=$1; OUT=$2; NPAR=${3:-3}
 shift 2; [ $# -gt 0 ] && shift

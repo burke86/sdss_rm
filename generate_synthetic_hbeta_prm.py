@@ -1,14 +1,16 @@
 #!/usr/bin/env python
-"""Generate synthetic photometric-RM bands from the SDSS-RM spectra, with no interpolation.
+"""Generate synthetic photometric-RM bands from SDSS-RM imaging and spectra, with no interpolation.
 
-Each SDSS-RM spectrum gives a continuum flux density (the ``sdss_spec`` rows of ``cont_lc.txt``) and an H-beta flux
-(``hb_lc.txt``) at the same epoch. At every such epoch this script writes a band containing both,
+For each SDSS-RM spectrum (an H-beta flux in ``hb_lc.txt``) with a photometric continuum point taken within
+MATCH_TOL days (any facility in ``cont_lc.txt`` except the spectroscopic ``sdss_spec`` rows), this script writes a
+band containing both, at the photometric epoch:
 
     F_a(t) = 1 + (delta_C(t) + a * delta_Hbeta(t)) / (1 + a),
 
 where delta = flux / median(flux) - 1 for each light curve and ``a`` is the H-beta/continuum flux ratio in the
-band. The errors combine the two measured errors the same way. rm_lag_profile.py drops the ``sdss_spec`` points
-from the continuum channel for these cases, so the two channels share no measurements.
+band. The errors combine the two measured errors the same way. The continuum part has imaging calibration, as in a
+real broad-band survey. rm_lag_profile.py drops these photometric points and the ``sdss_spec`` points from the
+continuum channel, so the two channels share no measurements.
 
 usage: python generate_synthetic_hbeta_prm.py --amplitudes 1.0 0.75 0.5 0.25
 """
@@ -21,7 +23,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parent
 SPEC_STREAM = "sdss_spec"
-MATCH_TOL = 0.01  # days between an H-beta epoch and its spectroscopic continuum point
+MATCH_TOL = 1.0  # days between a spectrum and its photometric continuum point
 
 
 def amplitude_tag(amplitude):
@@ -35,24 +37,28 @@ def fractional(flux, error):
 
 def generate_object(obj_dir, output_dir, amplitudes):
     raw = np.genfromtxt(obj_dir / "cont_lc.txt", comments="#", dtype=None, encoding="utf-8")
-    spec = np.char.startswith(np.asarray(raw["f3"], dtype=str), SPEC_STREAM)
-    tc, fc, ec = (np.asarray(raw[k], dtype=float)[spec] for k in ("f0", "f1", "f2"))
+    phot = ~np.char.startswith(np.asarray(raw["f3"], dtype=str), SPEC_STREAM)
+    tc, fc, ec = (np.asarray(raw[k], dtype=float)[phot] for k in ("f0", "f1", "f2"))
     tl, fl, el = np.loadtxt(obj_dir / "hb_lc.txt", comments="#", usecols=(0, 1, 2)).T
     good_c = np.isfinite(fc) & np.isfinite(ec) & (ec > 0)
     good_l = np.isfinite(fl) & np.isfinite(el) & (el > 0)
     tc, fc, ec = tc[good_c], fc[good_c], ec[good_c]
     tl, fl, el = tl[good_l], fl[good_l], el[good_l]
     if tc.size < 5:
-        raise ValueError("fewer than five spectroscopic continuum points")
+        raise ValueError("fewer than five photometric continuum points")
 
     o = np.argsort(tc)
     tc, fc, ec = tc[o], fc[o], ec[o]
     j = np.clip(np.searchsorted(tc, tl), 1, tc.size - 1)
     j = np.where(np.abs(tc[j] - tl) < np.abs(tc[j - 1] - tl), j, j - 1)
     matched = np.abs(tc[j] - tl) < MATCH_TOL
+    # two spectra matched to one photometric point: keep the closer spectrum
+    for k in np.unique(j[matched]):
+        same = np.flatnonzero(matched & (j == k))
+        matched[same[np.argsort(np.abs(tc[k] - tl[same]))[1:]]] = False
     if np.count_nonzero(matched) < 5:
-        raise ValueError("fewer than five H-beta epochs with a spectroscopic continuum point")
-    t = tl[matched]
+        raise ValueError("fewer than five H-beta epochs with a photometric continuum point")
+    t = tc[j[matched]]
     dc, dec = fractional(fc[j[matched]], ec[j[matched]])
     dl, del_ = fractional(fl[matched], el[matched])
 
@@ -64,11 +70,12 @@ def generate_object(obj_dir, output_dir, amplitudes):
         err = np.sqrt(dec**2 + (a * del_) ** 2) / (1.0 + a)
         path = obj_out / f"prm_hb_a{amplitude_tag(a)}_lc.txt"
         header = (
-            "Synthetic SDSS-RM photometric Hbeta band at the spectroscopic epochs\n"
+            f"Synthetic SDSS-RM photometric Hbeta band: photometric continuum + Hbeta from a spectrum within {MATCH_TOL:g} d\n"
             f"F = 1 + (delta_cont + {a:g} * delta_Hbeta) / (1 + {a:g})\n"
-            "MJD normalized_flux normalized_flux_err"
+            "MJD(photometric) normalized_flux normalized_flux_err MJD(spectrum)"
         )
-        np.savetxt(path, np.column_stack((t, flux, err)), fmt=("%.6f", "%.10e", "%.10e"), header=header)
+        np.savetxt(path, np.column_stack((t, flux, err, tl[matched])), fmt=("%.6f", "%.10e", "%.10e", "%.6f"),
+                   header=header)
         rows.append({"object": obj_dir.name, "amplitude": a, "n_epochs": int(t.size),
                      "n_hbeta_unmatched": int(np.count_nonzero(~matched)), "path": str(path.relative_to(output_dir))})
     return rows
